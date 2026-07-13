@@ -1,6 +1,6 @@
 """
 Monitor de versiones Docker - SmartFlow Servers
-Ejecutar: pip install paramiko requests pyyaml
+Ejecutar: pip install paramiko requests pyyaml python-dotenv
 Luego:    python server_monitor.py
 Abrir:    http://localhost:9090
 """
@@ -17,7 +17,12 @@ import yaml
 import urllib3
 import logging
 import traceback
-from datetime import datetime
+import os
+from datetime import datetime, timedelta, timezone
+from dotenv import load_dotenv
+
+# Cargar variables de entorno
+load_dotenv()
 
 # ===== LOGGING =====
 logging.basicConfig(
@@ -37,41 +42,41 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 SERVERS = [
     {
         "name": "haulage-01.smartflow.com.mx",
-        "host": "10.174.109.39",
+        "host": os.getenv("HAULAGE01_HOST", "10.174.109.39"),
         "dns": "haulage-01.smartflow.com.mx",
         "port": 22,
-        "user": "lasec",
-        "password": "Lasec123.",
+        "user": os.getenv("HAULAGE01_USER", ""),
+        "password": os.getenv("HAULAGE01_PASSWORD", ""),
         "ssh_key": None,
         "group": "HOD",
     },
     {
         "name": "dispatch-01-sf.smartflow.com.mx",
-        "host": "10.174.109.16",
+        "host": os.getenv("DISPATCH01_HOST", "10.174.109.16"),
         "dns": "dispatch-01-sf.smartflow.com.mx",
         "port": 22,
-        "user": "lasec",
-        "password": "Lasec123.",
+        "user": os.getenv("DISPATCH01_USER", ""),
+        "password": os.getenv("DISPATCH01_PASSWORD", ""),
         "ssh_key": None,
         "group": "HOD",
     },
     {
         "name": "dispatch-02-sf.smartflow.com.mx",
-        "host": "10.174.109.36",
+        "host": os.getenv("DISPATCH02_HOST", "10.174.109.36"),
         "dns": "dispatch-02-sf.smartflow.com.mx",
         "port": 22,
-        "user": "lasec",
-        "password": "Lasec0114.",
+        "user": os.getenv("DISPATCH02_USER", ""),
+        "password": os.getenv("DISPATCH02_PASSWORD", ""),
         "ssh_key": None,
         "group": "SIM",
     },
     {
         "name": "sim.smartflow.com.mx",
-        "host": "10.174.109.2",
+        "host": os.getenv("SIM_HOST", "10.174.109.2"),
         "dns": "sim.smartflow.com.mx",
         "port": 22,
-        "user": "lasec",
-        "password": "Lasec123.",
+        "user": os.getenv("SIM_USER", ""),
+        "password": os.getenv("SIM_PASSWORD", ""),
         "ssh_key": None,
         "group": "SIM",
     },
@@ -175,34 +180,46 @@ def fetch_server_info(server):
     return result
 
 
+def do_update():
+    """Ejecuta una actualizacion de todos los servidores."""
+    global server_data, last_update
+    log.info("Iniciando ciclo de actualizacion...")
+    results = {}
+    threads = []
+
+    def make_worker(srv):
+        def worker():
+            results[srv["host"]] = fetch_server_info(srv)
+        return worker
+
+    for srv in SERVERS:
+        t = threading.Thread(target=make_worker(srv))
+        threads.append(t)
+        t.start()
+    for t in threads:
+        t.join(timeout=45)
+
+    with lock:
+        server_data = results
+        tz_mx = timezone(timedelta(hours=-6))
+        last_update = datetime.now(tz_mx).strftime("%Y-%m-%d %H:%M:%S")
+    log.info(f"Ciclo completado. {len(results)} servidores actualizados.")
+
+
 def update_loop():
     """Hilo que actualiza los datos periodicamente."""
-    global server_data, last_update
     while True:
         try:
-            log.info("Iniciando ciclo de actualizacion...")
-            results = {}
-            threads = []
-
-            def make_worker(srv):
-                def worker():
-                    results[srv["host"]] = fetch_server_info(srv)
-                return worker
-
-            for srv in SERVERS:
-                t = threading.Thread(target=make_worker(srv))
-                threads.append(t)
-                t.start()
-            for t in threads:
-                t.join(timeout=45)
-
-            with lock:
-                server_data = results
-                last_update = time.strftime("%Y-%m-%d %H:%M:%S")
-            log.info(f"Ciclo completado. {len(results)} servidores actualizados.")
+            do_update()
         except Exception as e:
             log.error(f"Error en update_loop: {e}\n{traceback.format_exc()}")
         time.sleep(REFRESH_INTERVAL)
+
+
+def force_refresh():
+    """Fuerza una actualizacion inmediata en un thread aparte."""
+    t = threading.Thread(target=do_update, daemon=True)
+    t.start()
 
 
 def render_license_section(license_info, server_id):
@@ -386,6 +403,32 @@ def build_full_html(rows, updated):
             color: #8b949e;
             font-size: 13px;
             font-weight: 300;
+            margin-bottom: 12px;
+        }}
+        .header .update-info strong {{
+            color: #c9d1d9;
+            font-weight: 600;
+        }}
+        .refresh-btn {{
+            display: inline-block;
+            background: #1f6feb;
+            color: #ffffff;
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'Titillium Web', sans-serif;
+            text-decoration: none;
+            transition: background 0.2s, transform 0.1s;
+            border: 1px solid #388bfd;
+        }}
+        .refresh-btn:hover {{
+            background: #388bfd;
+            transform: translateY(-1px);
+        }}
+        .refresh-btn:active {{
+            background: #58a6ff;
+            transform: translateY(0);
         }}
         .grid {{
             display: grid;
@@ -683,10 +726,11 @@ def build_full_html(rows, updated):
     <div class="header">
         <h1>&#128421; SmartFlow &mdash; Monitor de Servidores</h1>
         <div class="update-info">
-            Ultima actualizacion: {html.escape(updated)} &nbsp;|&nbsp;
+            Ultima actualizacion: <strong>{html.escape(updated)}</strong> &nbsp;|&nbsp;
             Auto-refresh cada {REFRESH_INTERVAL}s &nbsp;|&nbsp;
             PDYM &rarr; HOD / SIM
         </div>
+        <a href="/refresh" class="refresh-btn" title="Forzar actualizacion ahora">&#8635; Actualizar ahora</a>
     </div>
     <div class="grid">
         {rows}
@@ -738,6 +782,14 @@ class ReusableTCPServer(socketserver.ThreadingTCPServer):
 class Handler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         try:
+            if self.path == "/refresh":
+                force_refresh()
+                self.send_response(302)
+                self.send_header("Location", "/")
+                self.send_header("Connection", "close")
+                self.end_headers()
+                return
+
             content = generate_html().encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")

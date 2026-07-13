@@ -27,6 +27,9 @@ server_monitor.log
 Thumbs.db
 .DS_Store
 
+# Environment / secrets
+.env
+
 # Reportes Tayoltita
 reportes_tayoltita/
 tayoltita/
