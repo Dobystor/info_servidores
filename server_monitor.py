@@ -18,6 +18,7 @@ import urllib3
 import logging
 import traceback
 import os
+import base64
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
@@ -238,7 +239,7 @@ def render_license_section(license_info, server_id):
     for svc in services:
         name = str(svc.get("display_name", svc.get("identifier", "?")))
         exp = str(svc.get("expirationDate", "?"))
-        copy_lines.append(f"{name}\\t{exp}")
+        copy_lines.append(f"{name}\t{exp}")
         exp_class = ""
         try:
             exp_date = datetime.strptime(exp, "%Y-%m-%d")
@@ -262,8 +263,8 @@ def render_license_section(license_info, server_id):
     if not services_html:
         services_html = '<div class="service-row dim">Sin servicios</div>'
 
-    copy_full = "Servicio\\tVigencia\\n" + "\\n".join(copy_lines)
-    copy_text = copy_full.replace("'", "\\'").replace('"', "&quot;")
+    copy_full = "Servicio\tVigencia\n" + "\n".join(copy_lines)
+    copy_b64 = base64.b64encode(copy_full.encode("utf-8")).decode("ascii")
 
     return f"""
     <div class="license-section">
@@ -271,7 +272,7 @@ def render_license_section(license_info, server_id):
             <span class="org">{org}</span>
             <span class="cliente">{cliente}</span>
             <span class="comments">{comments}</span>
-            <button class="copy-btn" onclick="copyText('{copy_text}')" title="Copiar servicios">&#128203;</button>
+            <button class="copy-btn" onclick="copyB64(this)" data-copy="{copy_b64}" title="Copiar servicios">&#128203;</button>
         </div>
         <div class="services-list">
             <div class="services-list-header">
@@ -309,20 +310,20 @@ def generate_html():
                 for ds in docker_services:
                     svc = html.escape(str(ds["service"]))
                     img = html.escape(str(ds["image"]))
-                    copy_lines.append(f"{ds['service']}\\t{ds['image']}")
+                    copy_lines.append(f"{ds['service']}\t{ds['image']}")
                     table_rows += (
                         f'<tr class="docker-row" data-search="{svc.lower()} {img.lower()}">'
                         f'<td class="col-svc">{svc}</td>'
                         f'<td class="col-img">{img}</td></tr>'
                     )
-                copy_full = f"{srv['name']}\\nServicio\\tImagen\\n" + "\\n".join(copy_lines)
-                copy_docker = copy_full.replace("'", "\\'").replace('"', "&quot;")
+                copy_full = f"{srv['name']}\nServicio\tImagen\n" + "\n".join(copy_lines)
+                copy_b64 = base64.b64encode(copy_full.encode("utf-8")).decode("ascii")
                 img_section = f"""
                 <details class="docker-details">
                     <summary class="docker-summary">
                         <span class="arrow">&#9662;</span>
                         Docker Services ({len(docker_services)})
-                        <button class="copy-btn small" onclick="event.stopPropagation();copyText('{copy_docker}')" title="Copiar todo">&#128203;</button>
+                        <button class="copy-btn small" onclick="event.stopPropagation();copyB64(this)" data-copy="{copy_b64}" title="Copiar todo">&#128203;</button>
                     </summary>
                     <div class="docker-content">
                         <input type="text" class="search-input" placeholder="Buscar servicio o imagen..." oninput="filterRows(this, '{server_id}')">
@@ -740,11 +741,16 @@ def build_full_html(rows, updated):
     <div class="toast" id="toast">Copiado al portapapeles</div>
 
     <script>
-        function copyText(text) {{
-            var decoded = text.replace(/\\\\n/g, '\\n').replace(/\\\\t/g, '\\t');
-            // Fallback para HTTP (navigator.clipboard requiere HTTPS)
+        function copyB64(btn) {{
+            var b64 = btn.getAttribute('data-copy');
+            var decoded = atob(b64);
+            // Decodificar UTF-8
+            var text = decodeURIComponent(Array.prototype.map.call(
+                new Uint8Array(decoded.split('').map(function(c){{ return c.charCodeAt(0); }})),
+                function(byte) {{ return '%' + ('00' + byte.toString(16)).slice(-2); }}
+            ).join(''));
             var textarea = document.createElement('textarea');
-            textarea.value = decoded;
+            textarea.value = text;
             textarea.style.position = 'fixed';
             textarea.style.left = '-9999px';
             textarea.style.top = '-9999px';
