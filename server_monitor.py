@@ -752,11 +752,24 @@ def build_full_html(rows, updated):
     <script>
         function copyText(text) {{
             var decoded = text.replace(/\\\\n/g, '\\n');
-            navigator.clipboard.writeText(decoded).then(function() {{
+            // Fallback para HTTP (navigator.clipboard requiere HTTPS)
+            var textarea = document.createElement('textarea');
+            textarea.value = decoded;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            textarea.style.top = '-9999px';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            try {{
+                document.execCommand('copy');
                 var toast = document.getElementById('toast');
                 toast.classList.add('show');
                 setTimeout(function() {{ toast.classList.remove('show'); }}, 1500);
-            }});
+            }} catch(e) {{
+                alert('Error al copiar');
+            }}
+            document.body.removeChild(textarea);
         }}
         function filterRows(input, tableId) {{
             var filter = input.value.toLowerCase();
