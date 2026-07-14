@@ -235,12 +235,10 @@ def render_license_section(license_info, server_id):
     services = license_info.get("services", [])
     services_html = ""
     copy_lines = []
-    # Calcular ancho maximo para alinear
-    max_name_len = max((len(str(s.get("display_name", s.get("identifier", "?")))) for s in services), default=10)
     for svc in services:
         name = str(svc.get("display_name", svc.get("identifier", "?")))
         exp = str(svc.get("expirationDate", "?"))
-        copy_lines.append(f"  {name.ljust(max_name_len)}   {exp}")
+        copy_lines.append(f"{name}\\t{exp}")
         exp_class = ""
         try:
             exp_date = datetime.strptime(exp, "%Y-%m-%d")
@@ -264,10 +262,7 @@ def render_license_section(license_info, server_id):
     if not services_html:
         services_html = '<div class="service-row dim">Sin servicios</div>'
 
-    # Formato de copiado con encabezado
-    copy_header = f"{'Servicio'.ljust(max_name_len)}   Vigencia"
-    copy_separator = f"{'─' * max_name_len}   {'─' * 10}"
-    copy_full = f"  {copy_header}\\n  {copy_separator}\\n" + "\\n".join(copy_lines)
+    copy_full = "Servicio\\tVigencia\\n" + "\\n".join(copy_lines)
     copy_text = copy_full.replace("'", "\\'").replace('"', "&quot;")
 
     return f"""
@@ -311,21 +306,16 @@ def generate_html():
             if docker_services:
                 table_rows = ""
                 copy_lines = []
-                # Calcular ancho maximo de nombre de servicio
-                max_svc_len = max((len(ds["service"]) for ds in docker_services), default=10)
                 for ds in docker_services:
                     svc = html.escape(str(ds["service"]))
                     img = html.escape(str(ds["image"]))
-                    copy_lines.append(f"  {ds['service'].ljust(max_svc_len)}   {ds['image']}")
+                    copy_lines.append(f"{ds['service']}\\t{ds['image']}")
                     table_rows += (
                         f'<tr class="docker-row" data-search="{svc.lower()} {img.lower()}">'
                         f'<td class="col-svc">{svc}</td>'
                         f'<td class="col-img">{img}</td></tr>'
                     )
-                # Formato con encabezado alineado
-                copy_header = f"  {'Servicio'.ljust(max_svc_len)}   Imagen"
-                copy_separator = f"  {'─' * max_svc_len}   {'─' * 40}"
-                copy_full = f"{html.escape(srv['name'])}\\n{copy_header}\\n{copy_separator}\\n" + "\\n".join(copy_lines)
+                copy_full = f"{srv['name']}\\nServicio\\tImagen\\n" + "\\n".join(copy_lines)
                 copy_docker = copy_full.replace("'", "\\'").replace('"', "&quot;")
                 img_section = f"""
                 <details class="docker-details">
@@ -751,7 +741,7 @@ def build_full_html(rows, updated):
 
     <script>
         function copyText(text) {{
-            var decoded = text.replace(/\\\\n/g, '\\n');
+            var decoded = text.replace(/\\\\n/g, '\\n').replace(/\\\\t/g, '\\t');
             // Fallback para HTTP (navigator.clipboard requiere HTTPS)
             var textarea = document.createElement('textarea');
             textarea.value = decoded;
