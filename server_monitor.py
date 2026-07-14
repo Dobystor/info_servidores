@@ -18,7 +18,7 @@ import urllib3
 import logging
 import traceback
 import os
-import base64
+import json
 from datetime import datetime, timedelta, timezone
 from dotenv import load_dotenv
 
@@ -264,7 +264,7 @@ def render_license_section(license_info, server_id):
         services_html = '<div class="service-row dim">Sin servicios</div>'
 
     copy_full = "Servicio\tVigencia\n" + "\n".join(copy_lines)
-    copy_b64 = base64.b64encode(copy_full.encode("utf-8")).decode("ascii")
+    copy_json = json.dumps(copy_full)
 
     return f"""
     <div class="license-section">
@@ -272,7 +272,7 @@ def render_license_section(license_info, server_id):
             <span class="org">{org}</span>
             <span class="cliente">{cliente}</span>
             <span class="comments">{comments}</span>
-            <button class="copy-btn" onclick="copyB64(this)" data-copy="{copy_b64}" title="Copiar servicios">&#128203;</button>
+            <button class="copy-btn" onclick="copyData(this)" data-copy='{copy_json}' title="Copiar servicios">&#128203;</button>
         </div>
         <div class="services-list">
             <div class="services-list-header">
@@ -317,13 +317,13 @@ def generate_html():
                         f'<td class="col-img">{img}</td></tr>'
                     )
                 copy_full = f"{srv['name']}\nServicio\tImagen\n" + "\n".join(copy_lines)
-                copy_b64 = base64.b64encode(copy_full.encode("utf-8")).decode("ascii")
+                copy_json = json.dumps(copy_full)
                 img_section = f"""
                 <details class="docker-details">
                     <summary class="docker-summary">
                         <span class="arrow">&#9662;</span>
                         Docker Services ({len(docker_services)})
-                        <button class="copy-btn small" onclick="event.stopPropagation();copyB64(this)" data-copy="{copy_b64}" title="Copiar todo">&#128203;</button>
+                        <button class="copy-btn small" onclick="event.stopPropagation();copyData(this)" data-copy='{copy_json}' title="Copiar todo">&#128203;</button>
                     </summary>
                     <div class="docker-content">
                         <input type="text" class="search-input" placeholder="Buscar servicio o imagen..." oninput="filterRows(this, '{server_id}')">
@@ -741,14 +741,9 @@ def build_full_html(rows, updated):
     <div class="toast" id="toast">Copiado al portapapeles</div>
 
     <script>
-        function copyB64(btn) {{
-            var b64 = btn.getAttribute('data-copy');
-            var decoded = atob(b64);
-            // Decodificar UTF-8
-            var text = decodeURIComponent(Array.prototype.map.call(
-                new Uint8Array(decoded.split('').map(function(c){{ return c.charCodeAt(0); }})),
-                function(byte) {{ return '%' + ('00' + byte.toString(16)).slice(-2); }}
-            ).join(''));
+        function copyData(btn) {{
+            var raw = btn.getAttribute('data-copy');
+            var text = JSON.parse(raw);
             var textarea = document.createElement('textarea');
             textarea.value = text;
             textarea.style.position = 'fixed';
